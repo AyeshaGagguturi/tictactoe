@@ -54,7 +54,7 @@ $GAME_ID = $response.id
 # Make a move — X in center
 curl.exe -s -X POST "http://localhost:8000/games/$GAME_ID/moves" `
   -H "Content-Type: application/json" `
-  -d '{\"position\": 4, \"player\": \"X\"}' | ConvertFrom-Json | Format-List
+  -d '{"position": 4, "player": "X"}' | ConvertFrom-Json | Format-List
 
 # Check state
 curl.exe -s "http://localhost:8000/games/$GAME_ID" | ConvertFrom-Json | Format-List
