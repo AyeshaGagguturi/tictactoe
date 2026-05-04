@@ -1,7 +1,7 @@
 # Tic-Tac-Toe
 
 REST API + browser UI for Tic-Tac-Toe built with **FastAPI**, **Pydantic**, and vanilla JS.  
-54 tests · two-player & vs-computer modes · zero external frontend dependencies.
+113 tests · two-player & vs-computer modes · zero external frontend dependencies.
 
 ## Quick start
 
@@ -48,22 +48,46 @@ tests/
 ## curl quickstart (PowerShell)
 
 ```powershell
+# Health check
+curl.exe -s http://localhost:8000/health
+
+# Create a game
 $response = curl.exe -s -X POST http://localhost:8000/games | ConvertFrom-Json
 $GAME_ID = $response.id
+Write-Host "Game: $GAME_ID"
 
-# Make a move — X in center
+# List all games
+curl.exe -s http://localhost:8000/games | ConvertFrom-Json | Format-List
+
+# Get game state
+curl.exe -s "http://localhost:8000/games/$GAME_ID" | ConvertFrom-Json | Format-List
+
+# Make moves
 curl.exe -s -X POST "http://localhost:8000/games/$GAME_ID/moves" `
   -H "Content-Type: application/json" `
   -d '{"position": 4, "player": "X"}' | ConvertFrom-Json | Format-List
 
-# Check state
-curl.exe -s "http://localhost:8000/games/$GAME_ID" | ConvertFrom-Json | Format-List
+curl.exe -s -X POST "http://localhost:8000/games/$GAME_ID/moves" `
+  -H "Content-Type: application/json" `
+  -d '{"position": 0, "player": "O"}' | ConvertFrom-Json | Format-List
+
+# Undo last move
+curl.exe -s -X POST "http://localhost:8000/games/$GAME_ID/undo" | ConvertFrom-Json | Format-List
+
+# Redo last undone move
+curl.exe -s -X POST "http://localhost:8000/games/$GAME_ID/redo" | ConvertFrom-Json | Format-List
+
+# Reset board (keeps same game ID)
+curl.exe -s -X POST "http://localhost:8000/games/$GAME_ID/reset" | ConvertFrom-Json | Format-List
+
+# Delete game
+curl.exe -s -X DELETE "http://localhost:8000/games/$GAME_ID" -w '%{http_code}'
 ```
 
 ## Tests
 
 ```powershell
-pytest -v                          # all 54 tests
+pytest -v                          # all 113 tests
 pytest tests\test_game.py -v       # game logic only
 pytest tests\test_api.py -v        # API + frontend only
 ```
