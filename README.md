@@ -52,33 +52,32 @@ tests/
 curl.exe -s http://localhost:8000/health
 
 # Create a game
-$response = curl.exe -s -X POST http://localhost:8000/games | ConvertFrom-Json
-$GAME_ID = $response.id
+$GAME_ID = (curl.exe -s -X POST http://localhost:8000/games | ConvertFrom-Json).id
 Write-Host "Game: $GAME_ID"
 
 # List all games
-curl.exe -s http://localhost:8000/games | ConvertFrom-Json | Format-List
+curl.exe -s http://localhost:8000/games | python -m json.tool
 
 # Get game state
-curl.exe -s "http://localhost:8000/games/$GAME_ID" | ConvertFrom-Json | Format-List
+curl.exe -s "http://localhost:8000/games/$GAME_ID" | python -m json.tool
 
 # Make moves
 curl.exe -s -X POST "http://localhost:8000/games/$GAME_ID/moves" `
   -H "Content-Type: application/json" `
-  -d '{"position": 4, "player": "X"}' | ConvertFrom-Json | Format-List
+  -d '{"position": 4, "player": "X"}' | python -m json.tool
 
 curl.exe -s -X POST "http://localhost:8000/games/$GAME_ID/moves" `
   -H "Content-Type: application/json" `
-  -d '{"position": 0, "player": "O"}' | ConvertFrom-Json | Format-List
+  -d '{"position": 0, "player": "O"}' | python -m json.tool
 
 # Undo last move
-curl.exe -s -X POST "http://localhost:8000/games/$GAME_ID/undo" | ConvertFrom-Json | Format-List
+curl.exe -s -X POST "http://localhost:8000/games/$GAME_ID/undo" | python -m json.tool
 
 # Redo last undone move
-curl.exe -s -X POST "http://localhost:8000/games/$GAME_ID/redo" | ConvertFrom-Json | Format-List
+curl.exe -s -X POST "http://localhost:8000/games/$GAME_ID/redo" | python -m json.tool
 
 # Reset board (keeps same game ID)
-curl.exe -s -X POST "http://localhost:8000/games/$GAME_ID/reset" | ConvertFrom-Json | Format-List
+curl.exe -s -X POST "http://localhost:8000/games/$GAME_ID/reset" | python -m json.tool
 
 # Delete game
 curl.exe -s -X DELETE "http://localhost:8000/games/$GAME_ID" -w '%{http_code}'
