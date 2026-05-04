@@ -34,9 +34,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Serve static assets (CSS, JS, images) from the static/ directory.
 _static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
-app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 # In-memory store: {game_id: Game}.
 # Fine for an interview; would swap for Redis/Postgres in production.
@@ -112,3 +110,6 @@ def delete_game(game_id: str):
     _get_game_or_404(game_id)
     del _games[game_id]
     return None
+
+# Mount static files AFTER routes so the root "/" route isn't shadowed.
+app.mount("/static", StaticFiles(directory=_static_dir), name="static")
