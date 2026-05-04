@@ -64,6 +64,10 @@ class NoMovesToUndoError(GameError):
     """Raised when undo is attempted with no moves on the stack."""
 
 
+class NoMovesToRedoError(GameError):
+    """Raised when redo is attempted with an empty redo stack."""
+
+
 @dataclass
 class Game:
     id: str = field(default_factory=lambda: str(uuid4()))
@@ -74,6 +78,16 @@ class Game:
     winning_line: Optional[tuple[int, int, int]] = None
     move_count: int = 0
     moves: list[tuple[int, Player]] = field(default_factory=list)
+    redo_stack: list[tuple[int, Player]] = field(default_factory=list)
+
+    def _apply_move(self, position: int, player: Player) -> None:
+        """Internal: place a mark, update status, swap turn. No validation."""
+        self.board[position] = player.value
+        self.move_count += 1
+        self.moves.append((position, player))
+        self._update_status()
+        if self.status == GameStatus.IN_PROGRESS:
+            self.current_player = Player.O if player == Player.X else Player.X
 
     def make_move(self, position: int, player: Player) -> None:
         """Apply a move. Raises GameError subclasses on invalid input."""
@@ -93,17 +107,8 @@ class Game:
         if self.board[position] != "":
             raise CellTakenError(f"Cell {position} is already taken")
 
-        # Apply move
-        self.board[position] = player.value
-        self.move_count += 1
-        self.moves.append((position, player))
-
-        # Check for terminal state
-        self._update_status()
-
-        # Swap turn only if game continues
-        if self.status == GameStatus.IN_PROGRESS:
-            self.current_player = Player.O if player == Player.X else Player.X
+        self.redo_stack.clear()
+        self._apply_move(position, player)
 
     def _update_status(self) -> None:
         """Check the board for a win or draw and update status accordingly."""
@@ -126,12 +131,21 @@ class Game:
             raise NoMovesToUndoError("No moves to undo")
 
         position, player = self.moves.pop()
+        self.redo_stack.append((position, player))
         self.board[position] = ""
         self.move_count -= 1
         self.current_player = player
         self.status = GameStatus.IN_PROGRESS
         self.winner = None
         self.winning_line = None
+
+    def redo(self) -> None:
+        """Redo the last undone move. Raises NoMovesToRedoError if empty."""
+        if not self.redo_stack:
+            raise NoMovesToRedoError("No moves to redo")
+
+        position, player = self.redo_stack.pop()
+        self._apply_move(position, player)
 
     def reset(self) -> None:
         """Reset to a fresh game, preserving the same id."""
@@ -142,3 +156,4 @@ class Game:
         self.winning_line = None
         self.move_count = 0
         self.moves = []
+        self.redo_stack = []

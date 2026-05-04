@@ -24,6 +24,7 @@ from app.game import (
     GameError,
     GameOverError,
     InvalidPositionError,
+    NoMovesToRedoError,
     NoMovesToUndoError,
     WrongTurnError,
 )
@@ -58,6 +59,7 @@ async def game_error_handler(_request, exc: GameError):
         InvalidPositionError: "invalid_position",
         WrongTurnError: "wrong_turn",
         NoMovesToUndoError: "no_moves_to_undo",
+        NoMovesToRedoError: "no_moves_to_redo",
     }.get(type(exc), "game_error")
     return JSONResponse(
         status_code=400,
@@ -111,6 +113,13 @@ def reset_game(game_id: str):
 def undo_move(game_id: str):
     game = _get_game_or_404(game_id)
     game.undo()
+    return GameResponse.from_game(game)
+
+
+@app.post("/games/{game_id}/redo", response_model=GameResponse)
+def redo_move(game_id: str):
+    game = _get_game_or_404(game_id)
+    game.redo()
     return GameResponse.from_game(game)
 
 

@@ -216,6 +216,22 @@ class TestMoveHistory:
         assert response.status_code == 201
         assert response.json()["moves"] == []
 
+    def test_moves_in_post_response(self, client, game_id):
+        response = client.post(
+            f"/games/{game_id}/moves", json={"position": 4, "player": "X"}
+        )
+
+        assert response.json()["moves"] == [{"position": 4, "player": "X"}]
+
+    def test_moves_accumulate(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 0, "player": "X"})
+        client.post(f"/games/{game_id}/moves", json={"position": 1, "player": "O"})
+        response = client.post(
+            f"/games/{game_id}/moves", json={"position": 4, "player": "X"}
+        )
+
+        assert len(response.json()["moves"]) == 3
+
 
 class TestUndo:
     def test_undo_returns_200(self, client, game_id):
@@ -256,3 +272,184 @@ class TestUndo:
         response = client.post("/games/missing/undo")
 
         assert response.status_code == 404
+
+    def test_undo_response_has_updated_moves(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 0, "player": "X"})
+        client.post(f"/games/{game_id}/moves", json={"position": 1, "player": "O"})
+
+        response = client.post(f"/games/{game_id}/undo")
+
+        assert response.json()["moves"] == [{"position": 0, "player": "X"}]
+
+    def test_undo_restores_current_player(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 0, "player": "X"})
+        client.post(f"/games/{game_id}/moves", json={"position": 1, "player": "O"})
+
+        response = client.post(f"/games/{game_id}/undo")
+
+        assert response.json()["current_player"] == "O"
+
+    def test_undo_decrements_move_count(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 0, "player": "X"})
+        client.post(f"/games/{game_id}/moves", json={"position": 1, "player": "O"})
+
+        response = client.post(f"/games/{game_id}/undo")
+
+        assert response.json()["move_count"] == 1
+
+    def test_undo_all_then_undo_returns_400(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 0, "player": "X"})
+        client.post(f"/games/{game_id}/undo")
+
+        response = client.post(f"/games/{game_id}/undo")
+
+        assert response.status_code == 400
+
+    def test_undo_then_different_move(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 0, "player": "X"})
+        client.post(f"/games/{game_id}/undo")
+
+        response = client.post(
+            f"/games/{game_id}/moves", json={"position": 4, "player": "X"}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["board"][0] == ""
+        assert response.json()["board"][4] == "X"
+
+    def test_undo_after_win_then_continue(self, client, game_id):
+        moves = [(0, "X"), (3, "O"), (1, "X"), (4, "O"), (2, "X")]
+        for pos, player in moves:
+            client.post(
+                f"/games/{game_id}/moves", json={"position": pos, "player": player}
+            )
+
+        client.post(f"/games/{game_id}/undo")
+        response = client.post(
+            f"/games/{game_id}/moves", json={"position": 5, "player": "X"}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "in_progress"
+
+
+class TestRedo:
+    def test_redo_returns_200(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 0, "player": "X"})
+        client.post(f"/games/{game_id}/undo")
+
+        response = client.post(f"/games/{game_id}/redo")
+
+        assert response.status_code == 200
+
+    def test_redo_restores_board(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 4, "player": "X"})
+        client.post(f"/games/{game_id}/undo")
+
+        response = client.post(f"/games/{game_id}/redo")
+
+        assert response.json()["board"][4] == "X"
+
+    def test_redo_empty_returns_400(self, client, game_id):
+        response = client.post(f"/games/{game_id}/redo")
+
+        assert response.status_code == 400
+        assert response.json()["error"] == "no_moves_to_redo"
+
+    def test_redo_without_undo_returns_400(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 0, "player": "X"})
+
+        response = client.post(f"/games/{game_id}/redo")
+
+        assert response.status_code == 400
+        assert response.json()["error"] == "no_moves_to_redo"
+
+    def test_redo_missing_game_returns_404(self, client):
+        response = client.post("/games/missing/redo")
+
+        assert response.status_code == 404
+
+    def test_redo_response_has_can_redo(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 0, "player": "X"})
+        client.post(f"/games/{game_id}/moves", json={"position": 1, "player": "O"})
+        client.post(f"/games/{game_id}/undo")
+        client.post(f"/games/{game_id}/undo")
+
+        response = client.post(f"/games/{game_id}/redo")
+
+        assert response.status_code == 200
+        assert response.json()["can_redo"] is True
+
+    def test_can_redo_false_after_new_game(self, client):
+        response = client.post("/games")
+
+        assert response.status_code == 201
+        assert response.json()["can_redo"] is False
+
+    def test_can_redo_true_after_undo(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 0, "player": "X"})
+
+        response = client.post(f"/games/{game_id}/undo")
+
+        assert response.status_code == 200
+        assert response.json()["can_redo"] is True
+
+    def test_can_redo_false_after_new_move(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 0, "player": "X"})
+        client.post(f"/games/{game_id}/undo")
+
+        response = client.post(
+            f"/games/{game_id}/moves", json={"position": 4, "player": "X"}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["can_redo"] is False
+
+    def test_redo_after_win_undo(self, client, game_id):
+        moves = [(0, "X"), (3, "O"), (1, "X"), (4, "O"), (2, "X")]
+        for pos, player in moves:
+            response = client.post(
+                f"/games/{game_id}/moves", json={"position": pos, "player": player}
+            )
+            assert response.status_code == 200
+
+        client.post(f"/games/{game_id}/undo")
+        response = client.post(f"/games/{game_id}/redo")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "x_wins"
+
+    def test_redo_updates_moves_list(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 0, "player": "X"})
+        client.post(f"/games/{game_id}/undo")
+
+        response = client.post(f"/games/{game_id}/redo")
+
+        assert response.json()["moves"] == [{"position": 0, "player": "X"}]
+
+    def test_redo_updates_move_count(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 0, "player": "X"})
+        undo_response = client.post(f"/games/{game_id}/undo")
+        assert undo_response.json()["move_count"] == 0
+
+        response = client.post(f"/games/{game_id}/redo")
+
+        assert response.json()["move_count"] == 1
+
+    def test_partial_redo_then_new_move(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 0, "player": "X"})
+        client.post(f"/games/{game_id}/moves", json={"position": 1, "player": "O"})
+        client.post(f"/games/{game_id}/undo")
+        client.post(f"/games/{game_id}/undo")
+        client.post(f"/games/{game_id}/redo")
+
+        response = client.post(
+            f"/games/{game_id}/moves", json={"position": 4, "player": "O"}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["can_redo"] is False
+        assert response.json()["moves"] == [
+            {"position": 0, "player": "X"},
+            {"position": 4, "player": "O"},
+        ]

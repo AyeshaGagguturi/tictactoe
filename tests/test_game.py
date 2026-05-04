@@ -8,6 +8,7 @@ from app.game import (
     GameOverError,
     GameStatus,
     InvalidPositionError,
+    NoMovesToRedoError,
     NoMovesToUndoError,
     Player,
     WrongTurnError,
@@ -198,6 +199,23 @@ class TestMoveHistory:
 
         assert game.moves == []
 
+    def test_moves_order_preserved(self):
+        game = Game()
+        game.make_move(0, Player.X)
+        game.make_move(1, Player.O)
+        game.make_move(4, Player.X)
+
+        assert game.moves[0] == (0, Player.X)
+        assert game.moves[1] == (1, Player.O)
+        assert game.moves[2] == (4, Player.X)
+
+    def test_moves_length_matches_move_count(self):
+        game = Game()
+        for i, p in [(0, Player.X), (1, Player.O), (2, Player.X)]:
+            game.make_move(i, p)
+
+        assert len(game.moves) == game.move_count
+
 
 class TestUndo:
     def test_undo_single_move(self):
@@ -269,3 +287,214 @@ class TestUndo:
         game.reset()
 
         assert game.moves == []
+
+    def test_undo_removes_from_moves_list(self):
+        game = Game()
+        game.make_move(0, Player.X)
+        game.make_move(1, Player.O)
+
+        game.undo()
+
+        assert game.moves == [(0, Player.X)]
+
+    def test_undo_all_moves_to_empty(self):
+        game = Game()
+        game.make_move(0, Player.X)
+        game.make_move(1, Player.O)
+        game.make_move(4, Player.X)
+
+        game.undo()
+        game.undo()
+        game.undo()
+
+        assert game.board == [""] * 9
+        assert game.move_count == 0
+        assert game.moves == []
+        assert game.current_player == Player.X
+
+    def test_undo_all_then_undo_again_raises(self):
+        game = Game()
+        game.make_move(0, Player.X)
+
+        game.undo()
+
+        with pytest.raises(NoMovesToUndoError):
+            game.undo()
+
+    def test_undo_then_make_different_move(self):
+        game = Game()
+        game.make_move(0, Player.X)
+
+        game.undo()
+        game.make_move(4, Player.X)
+
+        assert game.board[0] == ""
+        assert game.board[4] == "X"
+        assert game.moves == [(4, Player.X)]
+
+    def test_undo_after_win_allows_continued_play(self):
+        game = Game()
+        for pos, player in [(0, Player.X), (3, Player.O),
+                            (1, Player.X), (4, Player.O),
+                            (2, Player.X)]:
+            game.make_move(pos, player)
+
+        game.undo()
+        game.make_move(5, Player.X)
+
+        assert game.status == GameStatus.IN_PROGRESS
+        assert game.board[5] == "X"
+        assert game.board[2] == ""
+
+    def test_undo_decrements_move_count(self):
+        game = Game()
+        game.make_move(0, Player.X)
+        game.make_move(1, Player.O)
+
+        game.undo()
+
+        assert game.move_count == 1
+
+
+class TestRedo:
+    def test_redo_single_move(self):
+        game = Game()
+        game.make_move(0, Player.X)
+
+        game.undo()
+        game.redo()
+
+        assert game.board[0] == "X"
+        assert game.move_count == 1
+        assert game.current_player == Player.O
+
+    def test_redo_empty_raises(self):
+        game = Game()
+
+        with pytest.raises(NoMovesToRedoError):
+            game.redo()
+
+    def test_redo_without_undo_raises(self):
+        game = Game()
+        game.make_move(0, Player.X)
+
+        with pytest.raises(NoMovesToRedoError):
+            game.redo()
+
+    def test_redo_restores_board_and_turn(self):
+        game = Game()
+        game.make_move(0, Player.X)
+        game.make_move(4, Player.O)
+        board_before_undo = game.board.copy()
+        current_player_before_undo = game.current_player
+
+        game.undo()
+        game.redo()
+
+        assert game.board == board_before_undo
+        assert game.current_player == current_player_before_undo
+
+    def test_redo_after_multiple_undos(self):
+        game = Game()
+        for position, player in [(0, Player.X), (1, Player.O), (4, Player.X)]:
+            game.make_move(position, player)
+        original_board = game.board.copy()
+        original_moves = game.moves.copy()
+
+        game.undo()
+        game.undo()
+        game.undo()
+        game.redo()
+        game.redo()
+        game.redo()
+
+        assert game.board == original_board
+        assert game.moves == original_moves
+
+    def test_new_move_clears_redo_stack(self):
+        game = Game()
+        game.make_move(0, Player.X)
+
+        game.undo()
+        game.make_move(4, Player.X)
+
+        with pytest.raises(NoMovesToRedoError):
+            game.redo()
+
+    def test_invalid_move_does_not_clear_redo(self):
+        game = Game()
+        game.make_move(0, Player.X)
+
+        game.undo()
+
+        with pytest.raises(WrongTurnError):
+            game.make_move(1, Player.O)
+
+        game.redo()
+
+        assert game.board[0] == "X"
+        assert game.move_count == 1
+
+    def test_redo_winning_move(self):
+        game = Game()
+        for position, player in [(0, Player.X), (3, Player.O), (1, Player.X), (4, Player.O), (2, Player.X)]:
+            game.make_move(position, player)
+
+        game.undo()
+        game.redo()
+
+        assert game.status == GameStatus.X_WINS
+        assert game.winner == Player.X
+
+    def test_reset_clears_redo_stack(self):
+        game = Game()
+        game.make_move(0, Player.X)
+
+        game.undo()
+        game.reset()
+
+        with pytest.raises(NoMovesToRedoError):
+            game.redo()
+
+    def test_partial_redo_then_diverge(self):
+        game = Game()
+        for position, player in [(0, Player.X), (1, Player.O), (2, Player.X)]:
+            game.make_move(position, player)
+
+        game.undo()
+        game.undo()
+        game.redo()
+        game.make_move(4, Player.X)
+
+        with pytest.raises(NoMovesToRedoError):
+            game.redo()
+
+    def test_undo_pushes_to_redo(self):
+        game = Game()
+        game.make_move(0, Player.X)
+
+        game.undo()
+
+        assert game.redo_stack == [(0, Player.X)]
+
+    def test_redo_pops_from_redo(self):
+        game = Game()
+        game.make_move(0, Player.X)
+
+        game.undo()
+        game.redo()
+
+        assert game.redo_stack == []
+
+    def test_new_game_cannot_redo(self):
+        game = Game()
+
+        assert game.redo_stack == []
+
+    def test_undo_enables_redo(self):
+        game = Game()
+        game.make_move(0, Player.X)
+
+        game.undo()
+
+        assert len(game.redo_stack) > 0

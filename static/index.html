@@ -195,8 +195,9 @@
     <div id="board"></div>
 
     <div class="actions">
-      <button id="new-game-btn" class="action-btn">New Game</button>
       <button id="undo-btn" class="action-btn" disabled>Undo</button>
+      <button id="redo-btn" class="action-btn" disabled>Redo</button>
+      <button id="new-game-btn" class="action-btn">New Game</button>
     </div>
 
     <div id="move-history">
@@ -352,6 +353,30 @@
       }
     }
 
+    async function redoMove() {
+      if (!gameState || computerThinking || !gameState.can_redo) return;
+
+      clearPendingComputerMove();
+
+      try {
+        gameState = await apiCall(`/games/${gameId}/redo`, 'POST');
+
+        if (
+          getMode() === 'vs-computer' &&
+          gameState.can_redo &&
+          gameState.current_player === 'O'
+        ) {
+          gameState = await apiCall(`/games/${gameId}/redo`, 'POST');
+        }
+
+        clearMessages();
+        renderBoard();
+      } catch (err) {
+        showError(err.detail || 'Redo failed');
+        renderBoard();
+      }
+    }
+
     async function resetGame() {
       clearPendingComputerMove();
       try {
@@ -385,6 +410,11 @@
     function updateUndoButtonState() {
       const undoBtn = document.getElementById('undo-btn');
       undoBtn.disabled = !gameState || getMoves().length === 0 || computerThinking;
+    }
+
+    function updateRedoButtonState() {
+      const redoBtn = document.getElementById('redo-btn');
+      redoBtn.disabled = !gameState || !gameState.can_redo || computerThinking;
     }
 
     function renderBoard() {
@@ -438,6 +468,7 @@
 
       renderMoveHistory();
       updateUndoButtonState();
+      updateRedoButtonState();
     }
 
     function showError(msg) {
@@ -466,6 +497,7 @@
 
     document.getElementById('new-game-btn').addEventListener('click', resetGame);
     document.getElementById('undo-btn').addEventListener('click', undoMove);
+    document.getElementById('redo-btn').addEventListener('click', redoMove);
     createGame();
   </script>
 </body>

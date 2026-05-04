@@ -25,6 +25,7 @@ class GameResponse(BaseModel):
     winning_line: Optional[list[int]] = None
     move_count: int
     moves: list[MoveRecord] = []
+    can_redo: bool = False
 
     @classmethod
     def from_game(cls, game: Game) -> "GameResponse":
@@ -37,6 +38,7 @@ class GameResponse(BaseModel):
             winning_line=list(game.winning_line) if game.winning_line else None,
             move_count=game.move_count,
             moves=[MoveRecord(position=p, player=pl) for p, pl in game.moves],
+            can_redo=len(game.redo_stack) > 0,
         )
 
 
