@@ -134,8 +134,8 @@
       <label>
         <input type="radio" name="mode" value="two-player" checked> Two Player
       </label>
-      <label class="disabled-label">
-        <input type="radio" name="mode" value="vs-computer" disabled> vs Computer (coming soon)
+      <label>
+        <input type="radio" name="mode" value="vs-computer"> vs Computer
       </label>
     </div>
 
@@ -151,6 +151,41 @@
   <script>
     let gameId = null;
     let gameState = null;
+    let computerThinking = false;
+
+    function getMode() {
+      return document.querySelector('input[name="mode"]:checked').value;
+    }
+
+    const WIN_LINES = [
+      [0,1,2],[3,4,5],[6,7,8],
+      [0,3,6],[1,4,7],[2,5,8],
+      [0,4,8],[2,4,6]
+    ];
+
+    function computeComputerMove(board) {
+      const empty = board.map((v, i) => v === '' ? i : -1).filter(i => i >= 0);
+      if (empty.length === 0) return null;
+
+      // 1. Win: take any winning move for O
+      for (const line of WIN_LINES) {
+        const vals = line.map(i => board[i]);
+        if (vals.filter(v => v === 'O').length === 2 && vals.filter(v => v === '').length === 1) {
+          return line[vals.indexOf('')];
+        }
+      }
+      // 2. Block: block any winning move for X
+      for (const line of WIN_LINES) {
+        const vals = line.map(i => board[i]);
+        if (vals.filter(v => v === 'X').length === 2 && vals.filter(v => v === '').length === 1) {
+          return line[vals.indexOf('')];
+        }
+      }
+      // 3. Center if open
+      if (board[4] === '') return 4;
+      // 4. Random empty cell
+      return empty[Math.floor(Math.random() * empty.length)];
+    }
 
     async function apiCall(url, method = 'GET', body = null) {
       const opts = { method, headers: { 'Content-Type': 'application/json' } };
@@ -173,7 +208,7 @@
     }
 
     async function makeMove(position) {
-      if (!gameState || gameState.status !== 'in_progress') return;
+      if (!gameState || gameState.status !== 'in_progress' || computerThinking) return;
 
       try {
         gameState = await apiCall(
@@ -183,6 +218,28 @@
         );
         clearError();
         renderBoard();
+
+        // If vs-computer mode and game still going, computer plays as O
+        if (getMode() === 'vs-computer' && gameState.status === 'in_progress' && gameState.current_player === 'O') {
+          computerThinking = true;
+          // Brief delay so the player sees their move before computer responds
+          setTimeout(async () => {
+            try {
+              const pos = computeComputerMove(gameState.board);
+              if (pos !== null) {
+                gameState = await apiCall(
+                  `/games/${gameId}/moves`,
+                  'POST',
+                  { position: pos, player: 'O' }
+                );
+                renderBoard();
+              }
+            } catch (err) {
+              showError(err.detail || 'Computer move failed');
+            }
+            computerThinking = false;
+          }, 400);
+        }
       } catch (err) {
         showError(err.detail || 'Invalid move');
       }
@@ -264,6 +321,11 @@
       outcome.textContent = '';
       outcome.style.display = 'none';
     }
+
+    // Reset game when switching modes
+    document.querySelectorAll('input[name="mode"]').forEach(radio => {
+      radio.addEventListener('change', () => createGame());
+    });
 
     document.getElementById('new-game-btn').addEventListener('click', resetGame);
     createGame();
