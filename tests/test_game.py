@@ -8,6 +8,7 @@ from app.game import (
     GameOverError,
     GameStatus,
     InvalidPositionError,
+    NoMovesToUndoError,
     Player,
     WrongTurnError,
 )
@@ -182,3 +183,89 @@ class TestReset:
         assert game.current_player == Player.X
         assert game.status == GameStatus.IN_PROGRESS
         assert game.move_count == 0
+
+
+class TestMoveHistory:
+    def test_moves_recorded(self):
+        game = Game()
+        game.make_move(0, Player.X)
+        game.make_move(4, Player.O)
+
+        assert game.moves == [(0, Player.X), (4, Player.O)]
+
+    def test_moves_empty_on_new_game(self):
+        game = Game()
+
+        assert game.moves == []
+
+
+class TestUndo:
+    def test_undo_single_move(self):
+        game = Game()
+        game.make_move(0, Player.X)
+
+        game.undo()
+
+        assert game.board == [""] * 9
+        assert game.move_count == 0
+        assert game.current_player == Player.X
+
+    def test_undo_restores_turn(self):
+        game = Game()
+        game.make_move(0, Player.X)
+        game.make_move(1, Player.O)
+
+        game.undo()
+
+        assert game.current_player == Player.O
+
+    def test_undo_after_win(self):
+        game = Game()
+        for pos, player in [(0, Player.X), (3, Player.O),
+                            (1, Player.X), (4, Player.O),
+                            (2, Player.X)]:
+            game.make_move(pos, player)
+
+        game.undo()
+
+        assert game.status == GameStatus.IN_PROGRESS
+        assert game.winner is None
+        assert game.winning_line is None
+
+    def test_undo_after_draw(self):
+        game = Game()
+        moves = [(0, Player.X), (1, Player.O),
+                 (2, Player.X), (4, Player.O),
+                 (3, Player.X), (5, Player.O),
+                 (7, Player.X), (6, Player.O),
+                 (8, Player.X)]
+        for pos, player in moves:
+            game.make_move(pos, player)
+
+        game.undo()
+
+        assert game.status == GameStatus.IN_PROGRESS
+        assert game.move_count == 8
+
+    def test_undo_empty_raises(self):
+        game = Game()
+
+        with pytest.raises(NoMovesToUndoError):
+            game.undo()
+
+    def test_undo_clears_cell(self):
+        game = Game()
+        game.make_move(4, Player.X)
+
+        game.undo()
+
+        assert game.board[4] == ""
+
+    def test_reset_clears_moves(self):
+        game = Game()
+        game.make_move(0, Player.X)
+        game.make_move(1, Player.O)
+
+        game.reset()
+
+        assert game.moves == []

@@ -38,10 +38,11 @@ tests/
 | `GET` | `/games` | List all games |
 | `GET` | `/games/{id}` | Get game state |
 | `POST` | `/games/{id}/moves` | Make a move (`{"position": 0-8, "player": "X"|"O"}`) |
+| `POST` | `/games/{id}/undo` | Undo last move |
 | `POST` | `/games/{id}/reset` | Reset board (keep same ID) |
 | `DELETE` | `/games/{id}` | Delete a game → `204` |
 
-**Errors:** `422` for bad payloads (Pydantic) · `400` for illegal moves (`cell_taken`, `wrong_turn`, `game_over`, `invalid_position`) · `404` for missing games.
+**Errors:** `422` for bad payloads (Pydantic) · `400` for illegal moves (`cell_taken`, `wrong_turn`, `game_over`, `invalid_position`, `no_moves_to_undo`) · `404` for missing games.
 
 ## curl quickstart (PowerShell)
 

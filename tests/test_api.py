@@ -195,3 +195,64 @@ class TestResetAndDelete:
 
     def test_delete_missing_game_returns_404(self, client):
         assert client.delete("/games/missing").status_code == 404
+
+
+class TestMoveHistory:
+    def test_moves_in_response(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 0, "player": "X"})
+        client.post(f"/games/{game_id}/moves", json={"position": 4, "player": "O"})
+
+        response = client.get(f"/games/{game_id}")
+
+        assert response.status_code == 200
+        assert response.json()["moves"] == [
+            {"position": 0, "player": "X"},
+            {"position": 4, "player": "O"},
+        ]
+
+    def test_new_game_has_empty_moves(self, client):
+        response = client.post("/games")
+
+        assert response.status_code == 201
+        assert response.json()["moves"] == []
+
+
+class TestUndo:
+    def test_undo_returns_200(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 0, "player": "X"})
+
+        response = client.post(f"/games/{game_id}/undo")
+
+        assert response.status_code == 200
+
+    def test_undo_restores_board(self, client, game_id):
+        client.post(f"/games/{game_id}/moves", json={"position": 4, "player": "X"})
+
+        response = client.post(f"/games/{game_id}/undo")
+
+        assert response.status_code == 200
+        assert response.json()["board"][4] == ""
+
+    def test_undo_empty_game_returns_400(self, client, game_id):
+        response = client.post(f"/games/{game_id}/undo")
+
+        assert response.status_code == 400
+        assert response.json()["error"] == "no_moves_to_undo"
+
+    def test_undo_after_win(self, client, game_id):
+        moves = [(0, "X"), (3, "O"), (1, "X"), (4, "O"), (2, "X")]
+        for pos, player in moves:
+            response = client.post(
+                f"/games/{game_id}/moves", json={"position": pos, "player": player}
+            )
+            assert response.status_code == 200
+
+        response = client.post(f"/games/{game_id}/undo")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "in_progress"
+
+    def test_undo_missing_game_returns_404(self, client):
+        response = client.post("/games/missing/undo")
+
+        assert response.status_code == 404

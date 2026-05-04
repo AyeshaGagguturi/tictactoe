@@ -60,6 +60,10 @@ class WrongTurnError(GameError):
     """Raised when the wrong player tries to move."""
 
 
+class NoMovesToUndoError(GameError):
+    """Raised when undo is attempted with no moves on the stack."""
+
+
 @dataclass
 class Game:
     id: str = field(default_factory=lambda: str(uuid4()))
@@ -69,6 +73,7 @@ class Game:
     winner: Optional[Player] = None
     winning_line: Optional[tuple[int, int, int]] = None
     move_count: int = 0
+    moves: list[tuple[int, Player]] = field(default_factory=list)
 
     def make_move(self, position: int, player: Player) -> None:
         """Apply a move. Raises GameError subclasses on invalid input."""
@@ -91,6 +96,7 @@ class Game:
         # Apply move
         self.board[position] = player.value
         self.move_count += 1
+        self.moves.append((position, player))
 
         # Check for terminal state
         self._update_status()
@@ -114,6 +120,19 @@ class Game:
         if self.move_count == 9:
             self.status = GameStatus.DRAW
 
+    def undo(self) -> None:
+        """Undo the last move. Raises NoMovesToUndoError if no moves exist."""
+        if not self.moves:
+            raise NoMovesToUndoError("No moves to undo")
+
+        position, player = self.moves.pop()
+        self.board[position] = ""
+        self.move_count -= 1
+        self.current_player = player
+        self.status = GameStatus.IN_PROGRESS
+        self.winner = None
+        self.winning_line = None
+
     def reset(self) -> None:
         """Reset to a fresh game, preserving the same id."""
         self.board = [""] * 9
@@ -122,3 +141,4 @@ class Game:
         self.winner = None
         self.winning_line = None
         self.move_count = 0
+        self.moves = []

@@ -6,6 +6,11 @@ from pydantic import BaseModel, Field
 from app.game import Game, GameStatus, Player
 
 
+class MoveRecord(BaseModel):
+    position: int
+    player: Player
+
+
 class MoveRequest(BaseModel):
     position: int = Field(..., ge=0, le=8, description="Cell index 0..8")
     player: Player
@@ -19,6 +24,7 @@ class GameResponse(BaseModel):
     winner: Optional[Player] = None
     winning_line: Optional[list[int]] = None
     move_count: int
+    moves: list[MoveRecord] = []
 
     @classmethod
     def from_game(cls, game: Game) -> "GameResponse":
@@ -30,6 +36,7 @@ class GameResponse(BaseModel):
             winner=game.winner,
             winning_line=list(game.winning_line) if game.winning_line else None,
             move_count=game.move_count,
+            moves=[MoveRecord(position=p, player=pl) for p, pl in game.moves],
         )
 
 

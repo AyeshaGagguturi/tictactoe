@@ -111,8 +111,14 @@
       50% { transform: scale(1.08); }
     }
 
-    #new-game-btn {
+    .actions {
+      display: flex;
+      justify-content: center;
+      gap: 0.75rem;
       margin-top: 1.2rem;
+    }
+
+    .action-btn {
       padding: 0.7rem 2rem;
       font-size: 1.1rem;
       background: #e94560;
@@ -120,10 +126,53 @@
       border: none;
       border-radius: 6px;
       cursor: pointer;
-      transition: background 0.2s;
+      transition: background 0.2s, opacity 0.2s;
     }
 
-    #new-game-btn:hover { background: #c81e45; }
+    .action-btn:hover:not(:disabled) { background: #c81e45; }
+
+    .action-btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    #move-history {
+      width: 312px;
+      margin: 1rem auto 0;
+      text-align: left;
+      color: #b8c1d1;
+    }
+
+    #move-history-title {
+      margin-bottom: 0.5rem;
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #7f8daa;
+    }
+
+    #move-history-empty,
+    #move-history-list {
+      font-size: 0.9rem;
+    }
+
+    #move-history-empty {
+      color: #7f8daa;
+    }
+
+    #move-history-list {
+      list-style: none;
+      display: grid;
+      gap: 0.35rem;
+      padding: 0;
+      margin: 0;
+    }
+
+    #move-history-list li {
+      padding: 0.4rem 0.55rem;
+      border-radius: 4px;
+      background: #16213e;
+    }
   </style>
 </head>
 <body>
@@ -145,16 +194,44 @@
 
     <div id="board"></div>
 
-    <button id="new-game-btn">New Game</button>
+    <div class="actions">
+      <button id="new-game-btn" class="action-btn">New Game</button>
+      <button id="undo-btn" class="action-btn" disabled>Undo</button>
+    </div>
+
+    <div id="move-history">
+      <div id="move-history-title">Move History</div>
+      <div id="move-history-empty">No moves yet.</div>
+      <ul id="move-history-list"></ul>
+    </div>
   </div>
 
   <script>
     let gameId = null;
     let gameState = null;
     let computerThinking = false;
+    let computerMoveTimeoutId = null;
+
+    const POSITION_NAMES = [
+      'top-left', 'top-center', 'top-right',
+      'mid-left', 'center', 'mid-right',
+      'bottom-left', 'bottom-center', 'bottom-right'
+    ];
 
     function getMode() {
       return document.querySelector('input[name="mode"]:checked').value;
+    }
+
+    function getMoves() {
+      return Array.isArray(gameState?.moves) ? gameState.moves : [];
+    }
+
+    function clearPendingComputerMove() {
+      if (computerMoveTimeoutId !== null) {
+        clearTimeout(computerMoveTimeoutId);
+        computerMoveTimeoutId = null;
+      }
+      computerThinking = false;
     }
 
     const WIN_LINES = [
@@ -197,6 +274,7 @@
     }
 
     async function createGame() {
+      clearPendingComputerMove();
       try {
         gameState = await apiCall('/games', 'POST');
         gameId = gameState.id;
@@ -217,13 +295,18 @@
           { position: position, player: gameState.current_player }
         );
         clearError();
+
+        const shouldComputerPlay =
+          getMode() === 'vs-computer' &&
+          gameState.status === 'in_progress' &&
+          gameState.current_player === 'O';
+
+        computerThinking = shouldComputerPlay;
         renderBoard();
 
-        // If vs-computer mode and game still going, computer plays as O
-        if (getMode() === 'vs-computer' && gameState.status === 'in_progress' && gameState.current_player === 'O') {
-          computerThinking = true;
+        if (shouldComputerPlay) {
           // Brief delay so the player sees their move before computer responds
-          setTimeout(async () => {
+          computerMoveTimeoutId = setTimeout(async () => {
             try {
               const pos = computeComputerMove(gameState.board);
               if (pos !== null) {
@@ -232,12 +315,15 @@
                   'POST',
                   { position: pos, player: 'O' }
                 );
-                renderBoard();
+                clearError();
               }
             } catch (err) {
               showError(err.detail || 'Computer move failed');
+            } finally {
+              computerThinking = false;
+              computerMoveTimeoutId = null;
+              renderBoard();
             }
-            computerThinking = false;
           }, 400);
         }
       } catch (err) {
@@ -245,7 +331,29 @@
       }
     }
 
+    async function undoMove() {
+      if (!gameState || computerThinking || getMoves().length === 0) return;
+
+      const lastMove = getMoves()[getMoves().length - 1];
+      clearPendingComputerMove();
+
+      try {
+        gameState = await apiCall(`/games/${gameId}/undo`, 'POST');
+
+        if (getMode() === 'vs-computer' && lastMove?.player === 'O' && gameState.moves.length > 0) {
+          gameState = await apiCall(`/games/${gameId}/undo`, 'POST');
+        }
+
+        clearMessages();
+        renderBoard();
+      } catch (err) {
+        showError(err.detail || 'Undo failed');
+        renderBoard();
+      }
+    }
+
     async function resetGame() {
+      clearPendingComputerMove();
       try {
         gameState = await apiCall(`/games/${gameId}/reset`, 'POST');
         clearMessages();
@@ -255,7 +363,33 @@
       }
     }
 
+    function renderMoveHistory() {
+      const list = document.getElementById('move-history-list');
+      const empty = document.getElementById('move-history-empty');
+      list.innerHTML = '';
+
+      const moves = getMoves();
+      if (moves.length === 0) {
+        empty.style.display = 'block';
+        return;
+      }
+
+      empty.style.display = 'none';
+      moves.forEach((move, index) => {
+        const item = document.createElement('li');
+        item.textContent = `${index + 1}. ${move.player} → ${POSITION_NAMES[move.position]}`;
+        list.appendChild(item);
+      });
+    }
+
+    function updateUndoButtonState() {
+      const undoBtn = document.getElementById('undo-btn');
+      undoBtn.disabled = !gameState || getMoves().length === 0 || computerThinking;
+    }
+
     function renderBoard() {
+      if (!gameState) return;
+
       const board = document.getElementById('board');
       board.innerHTML = '';
 
@@ -274,7 +408,7 @@
           cell.classList.add('winning');
         }
 
-        if (gameState.status !== 'in_progress') {
+        if (gameState.status !== 'in_progress' || computerThinking) {
           cell.classList.add('disabled');
         }
 
@@ -301,6 +435,9 @@
       } else {
         outcome.style.display = 'none';
       }
+
+      renderMoveHistory();
+      updateUndoButtonState();
     }
 
     function showError(msg) {
@@ -328,6 +465,7 @@
     });
 
     document.getElementById('new-game-btn').addEventListener('click', resetGame);
+    document.getElementById('undo-btn').addEventListener('click', undoMove);
     createGame();
   </script>
 </body>
