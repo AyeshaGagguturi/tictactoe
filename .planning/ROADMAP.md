@@ -14,9 +14,15 @@
 4. "New Game" button resets the board
 5. Mode selector is visible (two-player is default and functional)
 
+**Plans:** 2 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — FastAPI static file serving
+- [ ] 01-02-PLAN.md — Frontend game UI (board, gameplay, mode selector)
+
 **UI hint**: yes
 
-### Phase 2: Computer Opponent
+### Phase 2:Computer Opponent
 **Goal:** Add a computer opponent that plays as O with basic strategy.
 
 **Requirements:** MODE-03, MODE-04
